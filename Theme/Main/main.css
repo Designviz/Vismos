@@ -1,0 +1,253 @@
+/* Themes
+Snuff #DAD2E4 - Body #f4f0fa
+Bermuda #7ECCD9 - Button #68a9b4 - Border: #5d97a1 - #Hover #52848d
+Waikawa Gray #53618D - Border #4a567e
+Ship Cove #7C9EBC - Border #7190ac
+*/
+
+/*
+ * Globals
+ */
+
+/* Links */
+
+
+a,
+a:focus,
+a:hover {
+  color: #3383f2;
+}
+
+/* Custom default button */
+.btn-secondary,
+.btn-secondary:hover,
+.btn-secondary:focus {
+  color: #f4f0fa;
+  text-shadow: none; /* Prevent inheritance from `body` */
+  background-color: #0a4ba6;
+  border: .05rem solid #3383f2;
+}
+
+
+/*
+ * Base structure
+ */
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  background-color: #071529;
+}
+
+body {
+  display: -ms-flexbox;
+  display: flex;
+  color:  #f4f0fa;
+  text-shadow: 0 .05rem .1rem rgba(0, 0, 0, .5);
+  box-shadow: inset 0 0 5rem rgba(0, 0, 0, .5);
+}
+
+
+/*
+ * Header
+ */
+.masthead {
+  margin-bottom: 2rem;
+}
+
+.masthead-brand {
+  margin-bottom: 0;
+}
+
+.nav-masthead .nav-link {
+  padding: .25rem 0;
+  font-weight: 700;
+  color: #f4f0fa;
+  background-color: transparent;
+  border-bottom: .25rem solid transparent;
+}
+
+.nav-masthead .nav-link:hover,
+.nav-masthead .nav-link:focus {
+  border-bottom-color: #283e5c;
+}
+
+.nav-masthead .nav-link + .nav-link {
+  margin-left: 1rem;
+}
+
+.nav-masthead .active {
+  color:  #53618D;
+  border-bottom-color: #283e5c;
+}
+
+@media (min-width: 48em) {
+  .masthead-brand {
+    float: left;
+  }
+  .nav-masthead {
+    float: right;
+  }
+}
+
+
+/*
+ * Cover
+ */
+.cover {
+  padding: 0 1.5rem;
+}
+.cover .btn-lg {
+  padding: .75rem 1.25rem;
+  font-weight: 700;
+}
+
+.card-body, .card-title, .modal-title, .display-6, .display-5, .display-4, .display-3, .display-2, .display-1, .lead
+{
+  color: #283e5c !important;
+}
+
+
+.card-body h1, .card-body h2, .card-body h3, .card-body h4, .card-body h5
+{
+  color: #283e5c !important;
+}
+/*
+ * Footer
+ */
+.mastfoot {
+  color: #283e5c;
+}
+
+.spiel-secondary
+{
+  color: #0a4ba6;
+}
+
+.bg-spiel {
+  background-color: #283e5c !important;
+}
+
+a.bg-spiel:hover, a.bg-spiel:focus,
+button.bg-spiel:hover,
+button.bg-spiel:focus {
+  background-color: #283e5c !important;
+}
+
+.navbar-spiel .navbar-brand {
+  color: #fff;
+}
+
+.navbar-spiel .navbar-brand:hover, .navbar-spiel .navbar-brand:focus {
+  color: #fff;
+}
+
+.navbar-spiel .navbar-nav .nav-link {
+  color: #f2f2f2;
+}
+
+.navbar-spiel .navbar-nav .nav-link:hover, .navbar-spiel .navbar-nav .nav-link:focus {
+  color: #f2f2f2;
+}
+
+.navbar-spiel .navbar-nav .nav-link.disabled {
+  color: #f2f2f2;
+}
+
+.navbar-spiel .navbar-nav .show > .nav-link,
+.navbar-spiel .navbar-nav .active > .nav-link,
+.navbar-spiel .navbar-nav .nav-link.show,
+.navbar-spiel .navbar-nav .nav-link.active {
+  color: #fff;
+}
+
+.navbar-spiel .navbar-toggler {
+  color: #f2f2f2;
+  border-color: #f2f2f2;
+  border: 0px;
+}
+
+.navbar-spiel .navbar-toggler-icon {
+  background-color: #283e5c;}
+
+.navbar-spiel .navbar-text {
+  color: #f2f2f2;
+}
+
+.navbar-spiel .navbar-text a {
+  color: #fff;
+}
+
+.navbar-spiel .navbar-text a:hover, .navbar-spiel .navbar-text a:focus {
+  color: #fff;
+}
+
+/*
+Zindex
+*/
+.zindex-popover
+{
+  z-index: 1070 !important;
+}
+.zindex-popover i
+{
+  z-index: 1070 !important;
+}
+
+.zindex-popover span
+{
+  z-index: 1070 !important;
+}
+
+.zindex-popover button
+{
+  z-index: 1070 !important;
+}
+
+.text-muted-spiel {
+  color: #afb9c2!important;
+}
+
+div.zindex-popover
+{
+  color: #fff;
+  z-index: 1070 !important;
+}
+
+.btn-spiel {
+  color: #fff !important;
+  background-color: #0a4ba6;
+  border-color: #0a4ba6;
+}
+
+.btn-spiel:hover {
+  color: #fff;
+  background-color: #3383f2;
+  border-color: #3383f2;
+}
+
+.btn-spiel:focus, .btn-spiel.focus {
+  color: #fff;
+  background-color: #0a4ba6;
+  border-color: #0a4ba6;
+  box-shadow: 0 0 0 0.2rem #030f1f;
+}
+
+.btn-spiel.disabled, .btn-spiel:disabled {
+  color: #fff;
+  background-color: #c8d8e4;
+  border-color: #c8d8e4;
+}
+
+.btn-spiel:not(:disabled):not(.disabled):active, .btn-spiel:not(:disabled):not(.disabled).active,
+.show > .btn-spiel.dropdown-toggle {
+  color: #fff;
+  background-color: #0a4ba6;
+  border-color: #0a4ba6;
+}
+
+.btn-spiel:not(:disabled):not(.disabled):active:focus, .btn-spiel:not(:disabled):not(.disabled).active:focus,
+.show > .btn-spiel.dropdown-toggle:focus {
+  box-shadow: 0 0 0 0.2rem #0a4ba6;
+}
