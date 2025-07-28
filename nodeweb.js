@@ -196,6 +196,58 @@ class WebVar {
         
     }
 
+    // New method: Add a reference to an existing connection object
+    addConnectionReference(connection)
+    {
+        // Check if this connection already exists in this pin
+        for (let i = 0; i < this.connections.length; i++) {
+            if (this.connections[i].guid === connection.guid) {
+                return; // Connection already exists
+            }
+        }
+
+        // For input pins, remove any existing connections first (input pins can only have one connection)
+        if (this.isInput && this.connections.length > 0) {
+            // Remove the existing connection from both pins
+            let existingConnection = this.connections[0];
+            existingConnection.B.removeConnectionReference(existingConnection);
+            this.connections = [];
+        }
+
+        // Add the connection reference
+        this.connections.push(connection);
+    }
+
+    // New method: Remove a reference to a specific connection object
+    removeConnectionReference(connection)
+    {
+        for (let index = 0; index < this.connections.length; index++) {
+            if (this.connections[index].guid === connection.guid) {
+                this.connections.splice(index, 1);
+                return;
+            }
+        }
+    }
+
+    // Legacy method for backward compatibility - now creates a single connection object
+    AddConnection(pin)
+    {
+        // Check if connection already exists
+        for (let i = 0; i < this.connections.length; i++) {
+            if (this.connections[i].B === pin) {
+                return; // Connection already exists
+            }
+        }
+
+        // Create a single connection object
+        let con = new WebPinConnection(0, this, pin);
+        con.guid = WebNodeUI.uuidv4();
+        
+        // Add the connection reference to both pins
+        this.addConnectionReference(con);
+        pin.addConnectionReference(con);
+    }
+
     SetPinLocation(x,y)
     {
         this.x = x;
@@ -541,6 +593,75 @@ class WebNodeDocument
         }
     }
 
+    CleanupCurrentDocument()
+    {
+        console.log('Cleaning up current document connections...');
+        
+        // Track all unique connections across the entire document
+        let allConnections = new Map(); // guid -> connection object
+        
+        // Process each node
+        for (let i = 0; i < this.Nodes.length; i++) {
+            let node = this.Nodes[i];
+            
+            // Clean up input connections
+            if (node.inputs) {
+                for (let j = 0; j < node.inputs.length; j++) {
+                    let input = node.inputs[j];
+                    if (input.connections && input.connections.length > 0) {
+                        let uniqueConnections = [];
+                        
+                        for (let k = 0; k < input.connections.length; k++) {
+                            let connection = input.connections[k];
+                            
+                            // Check if this connection already exists globally
+                            if (allConnections.has(connection.guid)) {
+                                console.log(`Duplicate connection found and removed: ${connection.guid}`);
+                                continue;
+                            }
+                            
+                            // Store this connection globally
+                            allConnections.set(connection.guid, connection);
+                            uniqueConnections.push(connection);
+                        }
+                        
+                        input.connections = uniqueConnections;
+                        console.log(`Cleaned input ${j} of node ${i}: ${input.connections.length} unique connections`);
+                    }
+                }
+            }
+            
+            // Clean up output connections
+            if (node.outputs) {
+                for (let j = 0; j < node.outputs.length; j++) {
+                    let output = node.outputs[j];
+                    if (output.connections && output.connections.length > 0) {
+                        let uniqueConnections = [];
+                        
+                        for (let k = 0; k < output.connections.length; k++) {
+                            let connection = output.connections[k];
+                            
+                            // Check if this connection already exists globally
+                            if (allConnections.has(connection.guid)) {
+                                console.log(`Duplicate connection found and removed: ${connection.guid}`);
+                                continue;
+                            }
+                            
+                            // Store this connection globally
+                            allConnections.set(connection.guid, connection);
+                            uniqueConnections.push(connection);
+                        }
+                        
+                        output.connections = uniqueConnections;
+                        console.log(`Cleaned output ${j} of node ${i}: ${output.connections.length} unique connections`);
+                    }
+                }
+            }
+        }
+        
+        console.log('Current document cleanup complete');
+        console.log(`Total unique connections found: ${allConnections.size}`);
+    }
 
     AddWebNode(path,isEntry=false)
     {
@@ -746,6 +867,9 @@ class WebNodeDocument
     {
         console.log('Cleaning up duplicate connections...');
         
+        // Track all unique connections across the entire document
+        let allConnections = new Map(); // guid -> connection object
+        
         // Process each node
         for (let i = 0; i < data.Nodes.length; i++) {
             let node = data.Nodes[i];
@@ -756,14 +880,19 @@ class WebNodeDocument
                     let input = node.inputs[j];
                     if (input.connections && input.connections.length > 0) {
                         let uniqueConnections = [];
-                        let seenGuids = new Set();
                         
                         for (let k = 0; k < input.connections.length; k++) {
                             let connection = input.connections[k];
-                            if (!seenGuids.has(connection.guid)) {
-                                seenGuids.add(connection.guid);
-                                uniqueConnections.push(connection);
+                            
+                            // Check if this connection already exists globally
+                            if (allConnections.has(connection.guid)) {
+                                console.log(`Duplicate connection found and removed: ${connection.guid}`);
+                                continue;
                             }
+                            
+                            // Store this connection globally
+                            allConnections.set(connection.guid, connection);
+                            uniqueConnections.push(connection);
                         }
                         
                         input.connections = uniqueConnections;
@@ -778,14 +907,19 @@ class WebNodeDocument
                     let output = node.outputs[j];
                     if (output.connections && output.connections.length > 0) {
                         let uniqueConnections = [];
-                        let seenGuids = new Set();
                         
                         for (let k = 0; k < output.connections.length; k++) {
                             let connection = output.connections[k];
-                            if (!seenGuids.has(connection.guid)) {
-                                seenGuids.add(connection.guid);
-                                uniqueConnections.push(connection);
+                            
+                            // Check if this connection already exists globally
+                            if (allConnections.has(connection.guid)) {
+                                console.log(`Duplicate connection found and removed: ${connection.guid}`);
+                                continue;
                             }
+                            
+                            // Store this connection globally
+                            allConnections.set(connection.guid, connection);
+                            uniqueConnections.push(connection);
                         }
                         
                         output.connections = uniqueConnections;
@@ -796,12 +930,27 @@ class WebNodeDocument
         }
         
         console.log('Duplicate connection cleanup complete');
+        console.log(`Total unique connections found: ${allConnections.size}`);
         return data;
     }
 
     ReConnectNodes(element)
     {
         console.log('Reconnecting nodes...');
+        
+        // Clear all existing connections in the live document first
+        WebNodeUI.CurrentDoc.Nodes.forEach(function(node) {
+            node.inputs.forEach(function(pin) {
+                pin.connections = [];
+            });
+            node.outputs.forEach(function(pin) {
+                pin.connections = [];
+            });
+        });
+        
+        // Track established connections by GUID to reuse them
+        let establishedConnections = new Map();
+        
         element.Nodes.forEach(function(node)
         {
             console.log('Processing node with GUID:', node.guid, 'with', node.inputs.length, 'inputs and', node.outputs.length, 'outputs');
@@ -836,13 +985,25 @@ class WebNodeDocument
                         if(opin!=null)
                         {
                             console.log('Connecting input pin: ' + con.B);
-                            // Create connection object with actual pin objects
-                            var connection = new WebPinConnection(con.t, actualNode.inputs[pinIndex], opin);
-                            connection.guid = con.guid;
                             
-                            // Add to both pins
-                            actualNode.inputs[pinIndex].connections.push(connection);
-                            opin.connections.push(connection);
+                            // Get or create the connection object
+                            let connection;
+                            if (establishedConnections.has(con.guid)) {
+                                connection = establishedConnections.get(con.guid);
+                                // Update the connection with the actual pin objects
+                                connection.A = actualNode.inputs[pinIndex];
+                                connection.B = opin;
+                            } else {
+                                // Create new connection object
+                                connection = new WebPinConnection(con.t, actualNode.inputs[pinIndex], opin);
+                                connection.guid = con.guid;
+                                establishedConnections.set(con.guid, connection);
+                            }
+                            
+                            // Add the connection reference to both pins
+                            actualNode.inputs[pinIndex].addConnectionReference(connection);
+                            opin.addConnectionReference(connection);
+                            
                             console.log('Connection created between input pin and output pin');
                         } else {
                             console.log('Pin not found: ' + con.B);
@@ -866,13 +1027,25 @@ class WebNodeDocument
                         if(opin!=null)
                         {
                             console.log('Connecting output pin: ' + con.B);
-                            // Create connection object with actual pin objects
-                            var connection = new WebPinConnection(con.t, actualNode.outputs[pinIndex], opin);
-                            connection.guid = con.guid;
                             
-                            // Add to both pins
-                            actualNode.outputs[pinIndex].connections.push(connection);
-                            opin.connections.push(connection);
+                            // Get or create the connection object
+                            let connection;
+                            if (establishedConnections.has(con.guid)) {
+                                connection = establishedConnections.get(con.guid);
+                                // Update the connection with the actual pin objects
+                                connection.A = actualNode.outputs[pinIndex];
+                                connection.B = opin;
+                            } else {
+                                // Create new connection object
+                                connection = new WebPinConnection(con.t, actualNode.outputs[pinIndex], opin);
+                                connection.guid = con.guid;
+                                establishedConnections.set(con.guid, connection);
+                            }
+                            
+                            // Add the connection reference to both pins
+                            actualNode.outputs[pinIndex].addConnectionReference(connection);
+                            opin.addConnectionReference(connection);
+                            
                             console.log('Connection created between output pin and input pin');
                         } else {
                             console.log('Pin not found: ' + con.B);
@@ -883,7 +1056,6 @@ class WebNodeDocument
             });
         });
         console.log('Reconnection complete');
-
     }
 }
 
@@ -1535,8 +1707,13 @@ class WebNodeGUI
                     {
                         if(node.inputs[node.selectedinputPin].t==selnode.outputs[selnode.selectedoutputPin].t)
                         {
-                            node.inputs[node.selectedinputPin].AddConnection(selnode.outputs[selnode.selectedoutputPin]);
-                            selnode.outputs[selnode.selectedoutputPin].AddConnection(node.inputs[node.selectedinputPin]);
+                            // Create a single connection object
+                            let connection = new WebPinConnection(0, selnode.outputs[selnode.selectedoutputPin], node.inputs[node.selectedinputPin]);
+                            connection.guid = WebNodeUI.uuidv4();
+                            
+                            // Add the connection reference to both pins
+                            selnode.outputs[selnode.selectedoutputPin].addConnectionReference(connection);
+                            node.inputs[node.selectedinputPin].addConnectionReference(connection);
                         }
                     }
                 }
@@ -1550,8 +1727,13 @@ class WebNodeGUI
                     {
                         if(node.outputs[node.selectedoutputPin].t==selnode.inputs[selnode.selectedinputPin].t)
                         {
-                            node.outputs[node.selectedoutputPin].AddConnection(selnode.inputs[selnode.selectedinputPin]);
-                            selnode.inputs[selnode.selectedinputPin].AddConnection(node.outputs[node.selectedoutputPin]);
+                            // Create a single connection object
+                            let connection = new WebPinConnection(0, node.outputs[node.selectedoutputPin], selnode.inputs[selnode.selectedinputPin]);
+                            connection.guid = WebNodeUI.uuidv4();
+                            
+                            // Add the connection reference to both pins
+                            node.outputs[node.selectedoutputPin].addConnectionReference(connection);
+                            selnode.inputs[selnode.selectedinputPin].addConnectionReference(connection);
                         }
                     }
                 }
@@ -1872,7 +2054,11 @@ function UpdateVarDefaults()
 
 function SaveMyDocument()
 {
-    var saveit = JSON.stringify( WebNodeUI.MainDoc);
+    // Clean up duplicate connections before saving
+    console.log('Cleaning up connections before saving...');
+    WebNodeUI.MainDoc.CleanupCurrentDocument();
+    
+    var saveit = JSON.stringify(WebNodeUI.MainDoc);
     WebNodeUI.MainDoc.name = $('#savedocModal').find('.modal-body input').val();
     $.post("editorfunctions.php",{"postaction" : "save-document", "dir" : WebNodeUI.MainDoc.name, "doc" : saveit},function(data){
         alert(data);
