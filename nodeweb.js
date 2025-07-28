@@ -164,7 +164,7 @@ class WebVar {
             var p = this.connections[index];
             if(p.B===pin)
             {
-                this.connections.splice(0, index+1); 
+                this.connections.splice(index, 1); 
                 return;
             }
         }
@@ -172,6 +172,12 @@ class WebVar {
 
     AddConnection(pin)
     {
+        // Check if connection already exists
+        for (let i = 0; i < this.connections.length; i++) {
+            if (this.connections[i].B === pin) {
+                return; // Connection already exists
+            }
+        }
 
         let con = new WebPinConnection(0,this,pin);
         con.guid = WebNodeUI.uuidv4();
@@ -734,6 +740,63 @@ class WebNodeDocument
         }
         console.log('GUID not found:', guid);
         return null;
+    }
+
+    CleanupDuplicateConnections(data)
+    {
+        console.log('Cleaning up duplicate connections...');
+        
+        // Process each node
+        for (let i = 0; i < data.Nodes.length; i++) {
+            let node = data.Nodes[i];
+            
+            // Clean up input connections
+            if (node.inputs) {
+                for (let j = 0; j < node.inputs.length; j++) {
+                    let input = node.inputs[j];
+                    if (input.connections && input.connections.length > 0) {
+                        let uniqueConnections = [];
+                        let seenGuids = new Set();
+                        
+                        for (let k = 0; k < input.connections.length; k++) {
+                            let connection = input.connections[k];
+                            if (!seenGuids.has(connection.guid)) {
+                                seenGuids.add(connection.guid);
+                                uniqueConnections.push(connection);
+                            }
+                        }
+                        
+                        input.connections = uniqueConnections;
+                        console.log(`Cleaned input ${j} of node ${i}: ${input.connections.length} unique connections`);
+                    }
+                }
+            }
+            
+            // Clean up output connections
+            if (node.outputs) {
+                for (let j = 0; j < node.outputs.length; j++) {
+                    let output = node.outputs[j];
+                    if (output.connections && output.connections.length > 0) {
+                        let uniqueConnections = [];
+                        let seenGuids = new Set();
+                        
+                        for (let k = 0; k < output.connections.length; k++) {
+                            let connection = output.connections[k];
+                            if (!seenGuids.has(connection.guid)) {
+                                seenGuids.add(connection.guid);
+                                uniqueConnections.push(connection);
+                            }
+                        }
+                        
+                        output.connections = uniqueConnections;
+                        console.log(`Cleaned output ${j} of node ${i}: ${output.connections.length} unique connections`);
+                    }
+                }
+            }
+        }
+        
+        console.log('Duplicate connection cleanup complete');
+        return data;
     }
 
     ReConnectNodes(element)
@@ -1824,6 +1887,10 @@ function LoadMyDocument()
         
         try {
             var tempData = JSON.parse(data);
+            
+            // Clean up duplicate connections in the loaded data
+            tempData = WebNodeUI.CurrentDoc.CleanupDuplicateConnections(tempData);
+            
             WebNodeUI.MainDoc = new WebNodeDocument(canvas,ctx,tempData.name);
             WebNodeUI.CurrentDoc = WebNodeUI.MainDoc;
             console.log('Loaded: '+tempData.name);

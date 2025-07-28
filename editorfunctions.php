@@ -36,22 +36,29 @@
     switch($postaction)
     {
         case "load-document":
-            $myfile = '';
             $id = $_POST["id"];
             $database->OpenConnection();
             $projdata = $database->GetProject($id);
             $filename = $projdata[2];
-            
             $database->CloseConnection();
 
-             //fopen("proj.txt", "r") or $myfile = fopen("proj.txt", "w");
-            $myfile = fopen($filename, "r") or $myfile = fopen($filename, "w");
-            $webdoc = fread($myfile,filesize($filename));
-
-            
-            echo $webdoc;
-
-            fclose($myfile);
+            // Check if file exists and has content
+            if (file_exists($filename) && filesize($filename) > 0) {
+                $myfile = fopen($filename, "r");
+                $webdoc = fread($myfile, filesize($filename));
+                fclose($myfile);
+                echo $webdoc;
+            } else {
+                // Return a valid empty document structure
+                $emptyDoc = [
+                    'name' => 'New Document',
+                    'guid' => uniqid(),
+                    'Nodes' => [],
+                    'Functions' => [],
+                    'Variabes' => []
+                ];
+                echo json_encode($emptyDoc);
+            }
             exit();
         break;
 
@@ -79,18 +86,63 @@
         break;
 
         case "compile-document":
-            $obj = json_decode($_POST["doc"], false);
-            $wd = new WebNodeDocument;
-            $wd->FromJSON($obj);
-            $wd->Compile($_POST["dir"],FALSE);
+            try {
+                // Debug: Log what we're receiving
+                error_log("Compile request received. POST data: " . print_r($_POST, true));
+                
+                if (!isset($_POST["doc"])) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['status' => 'alert-danger', 'message' => 'No document data received']);
+                    exit();
+                }
+                
+                $obj = json_decode($_POST["doc"], false);
+                if ($obj === null) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['status' => 'alert-danger', 'message' => 'Invalid JSON data: ' . json_last_error_msg()]);
+                    exit();
+                }
+                
+                error_log("JSON decoded successfully. Nodes count: " . (isset($obj->Nodes) ? count($obj->Nodes) : 0));
+                
+                $wd = new WebNodeDocument;
+                $wd->FromJSON($obj);
+                
+                error_log("Document loaded. Final node: " . ($wd->finalOutputNode ? $wd->finalOutputNode->name : 'null'));
+                
+                // Add more detailed logging
+                error_log("Starting compilation...");
+                $wd->CompileReverse($_POST["dir"],FALSE);
+                error_log("Compilation completed successfully");
+            } catch (Exception $e) {
+                error_log("Compilation error: " . $e->getMessage() . " in " . $e->getFile() . " line " . $e->getLine());
+                error_log("Stack trace: " . $e->getTraceAsString());
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'alert-danger', 'message' => 'Compilation error: ' . $e->getMessage()]);
+            } catch (Error $e) {
+                error_log("Fatal error: " . $e->getMessage() . " in " . $e->getFile() . " line " . $e->getLine());
+                error_log("Stack trace: " . $e->getTraceAsString());
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'alert-danger', 'message' => 'Fatal error: ' . $e->getMessage()]);
+            }
             exit();
         break;
 
         case "launch-document":
-            $obj = json_decode($_POST["doc"], false);
-            $wd = new WebNodeDocument;
-            $wd->FromJSON($obj);
-            $wd->Compile($_POST["dir"],TRUE);
+            try {
+                $obj = json_decode($_POST["doc"], false);
+                if ($obj === null) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['status' => 'alert-danger', 'message' => 'Invalid JSON data']);
+                    exit();
+                }
+                $wd = new WebNodeDocument;
+                $wd->FromJSON($obj);
+                $wd->CompileReverse($_POST["dir"],TRUE);
+            } catch (Exception $e) {
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'alert-danger', 'message' => 'Launch error: ' . $e->getMessage()]);
+            }
             exit();
         break;
 
@@ -192,12 +244,12 @@
         function FromJSON($json)
         {
             $this->t = $json->t;
-            $this->guid = $json->$guid;           
+            $this->guid = $json->guid;           
             $this->A = $this->parent;
             //Perform this after all vars have been loaded
             //store B GUID
-            $this->$bguid = $json->B;
-            //$this->B = $this->FindWebVar($json->B->$guid);
+            $this->bguid = $json->B;
+            //$this->B = $this->FindWebVar($json->B->guid);
         }
 
         function FindWebVar()
@@ -208,7 +260,7 @@
             if($doc!=null)
             {
                 //echo "Find Webvar";
-                $this->B = $doc->FindWebVar($this->$bguid);
+                $this->B = $doc->FindWebVar($this->bguid);
             }
             return null;
             
@@ -236,13 +288,15 @@
         {
             $this->currentval = $this->defaultval;
                 //ignore if flow node
-            if($this->connections[$i]!=null)
+            if(isset($this->connections[$i]) && $this->connections[$i] != null)
             {
-                if($this->connections[$i]->t!=4)
+                if($this->connections[$i]->t != 4)
                 {
                     //need previous parents to compile to get final output
-                    $this->connections[$i]->B->parent->Compile();
-                    $this->currentval = $this->connections[$i]->B->currentval;
+                    if(isset($this->connections[$i]->B) && isset($this->connections[$i]->B->parent)) {
+                        $this->connections[$i]->B->parent->Compile();
+                        $this->currentval = $this->connections[$i]->B->currentval;
+                    }
                 }
             }
             //perform node action on value
@@ -252,29 +306,34 @@
 
         function AttachConnections()
         {
-            for ($i=0; $i < sizeof($this->connections); $i++) { 
-
-                $this->connections[$i]->FindWebVar();
+            if(isset($this->connections) && is_array($this->connections)) {
+                for ($i=0; $i < sizeof($this->connections); $i++) { 
+                    if(isset($this->connections[$i])) {
+                        $this->connections[$i]->FindWebVar();
+                    }
+                }
             }          
         }
 
         function FromJSON($json)
         {
-            $this->name = $json->name;
-            $this->t = $json->t;
-            $this->containerType = $json->containerType;
-            $this->val = $json->val;
-            $this->isInput = $json->isInput;
-            $this->defaultval = $json->defaultval;
-            $this->currentval = $json->currentval;
-            $this->guid = $json->guid;
+            $this->name = isset($json->name) ? $json->name : '';
+            $this->t = isset($json->t) ? $json->t : 0;
+            $this->containerType = isset($json->containerType) ? $json->containerType : 0;
+            $this->val = isset($json->val) ? $json->val : '';
+            $this->isInput = isset($json->isInput) ? $json->isInput : false;
+            $this->defaultval = isset($json->defaultval) ? $json->defaultval : '';
+            $this->currentval = isset($json->currentval) ? $json->currentval : '';
+            $this->guid = isset($json->guid) ? $json->guid : '';
 
-            for ($i=0; $i < sizeof($json->connections); $i++) { 
+            if(isset($json->connections) && is_array($json->connections)) {
+                for ($i=0; $i < sizeof($json->connections); $i++) { 
 
-                $wp = new WebPinConnection;
-                $wp->parent = $this;
-                $wp->FromJSON($json->connections[$i]);
-                array_push($this->connections,$wp);
+                    $wp = new WebPinConnection;
+                    $wp->parent = $this;
+                    $wp->FromJSON($json->connections[$i]);
+                    array_push($this->connections,$wp);
+                }
             }
         }
     }
@@ -315,40 +374,60 @@
             $req = new NodeRequest;
             for ($i=0; $i < sizeof($this->inputs); $i++) { 
                 # code...
-                if($this->inputs[$i]->t!=4)
+                if(isset($this->inputs[$i]) && $this->inputs[$i]->t!=4)
                 {
                     //need the final values before we can compile node.
                     //does our input have any connections?
                     //if(sizeof($this->inputs[$i]->connections)>0)
                     //{
                         //for inputs there should only be one connection.
-                    $this->inputs[$i]->GetFinalVal(0);
+                    $this->inputs[$i]->GetFinalVal($i);
                     //}
                     
                 }
-                array_push($req->inputs,$this->inputs[$i]->currentval);
+                if(isset($this->inputs[$i])) {
+                    array_push($req->inputs,$this->inputs[$i]->currentval);
+                } else {
+                    array_push($req->inputs,'');
+                }
             }
-            $res = $this->PerformTemplate('https://vizmos.io/'.$this->templatepath,$req);
+            $templateUrl = 'https://vizmos.io/'.$this->templatepath;
+            error_log("Compiling node: " . $this->name . " with template: " . $templateUrl);
+            $res = $this->PerformTemplate($templateUrl,$req);
             //echo "CURL: ".$res;
             //update values
             //once all input vals are set we can set output values
-            for ($i=0; $i < sizeof($res->outputs); $i++) { 
-                # code...
+            if (isset($res->outputs) && is_array($res->outputs)) {
+                for ($i=0; $i < sizeof($res->outputs); $i++) { 
+                    # code...
+                    if (isset($this->outputs[$i])) {
+                        $this->outputs[$i]->currentval = $res->outputs[$i];
 
-                $this->outputs[$i]->currentval = $res->outputs[$i];
-
-                if($this->outputs[$i]->t==4)
-                {
-                    if(sizeof($this->outputs[$i]->connections)>0)
-                    {
-                        $this->nextNode = $this->outputs[$i]->connections[0]->B->parent;
-                        //echo "Set Next Node: ".$this->outputs[$i]->connections[0]->B->parent->name."\n";
+                        if($this->outputs[$i]->t==4)
+                        {
+                            if(isset($this->outputs[$i]->connections) && sizeof($this->outputs[$i]->connections)>0)
+                            {
+                                if(isset($this->outputs[$i]->connections[0]->B) && isset($this->outputs[$i]->connections[0]->B->parent)) {
+                                    $this->nextNode = $this->outputs[$i]->connections[0]->B->parent;
+                                    //echo "Set Next Node: ".$this->outputs[$i]->connections[0]->B->parent->name."\n";
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             //echo "Compile finished for: ".$this->name."\n";
-            return '';
+            // Return the compiled output instead of empty string
+            $output = '';
+            if (isset($this->outputs) && is_array($this->outputs)) {
+                foreach ($this->outputs as $output_pin) {
+                    if ($output_pin->t != 4) { // Skip flow pins
+                        $output .= $output_pin->currentval;
+                    }
+                }
+            }
+            return $output;
             
         }
 
@@ -363,9 +442,27 @@
             curl_setopt($ch, CURLOPT_POST, count($fields));
             curl_setopt($ch, CURLOPT_POSTFIELDS, $postvars);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
             $result = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            return json_decode($result);
+            
+            if ($result === false || $httpCode !== 200) {
+                // Return a default response if template fails
+                $defaultResponse = new stdClass();
+                $defaultResponse->outputs = [];
+                return $defaultResponse;
+            }
+            
+            $decoded = json_decode($result);
+            if ($decoded === null) {
+                // Return a default response if JSON decode fails
+                $defaultResponse = new stdClass();
+                $defaultResponse->outputs = [];
+                return $defaultResponse;
+            }
+            
+            return $decoded;
         }
 
         function FindWebVar($guid)
@@ -390,28 +487,32 @@
 
         function FromJSON($json)
         {
-            $this->name = $json->name;
-            $this->x = $json->x;
-            $this->y = $json->y;
-            $this->w = $json->w;
-            $this->h = $json->h;
-            $this->templatepath = $json->templatepath;
-            $this->radius = $json->radius;
-            $this->fontsize = $json->fontsize;
-            $this->guid = $json->guid;
+            $this->name = isset($json->name) ? $json->name : '';
+            $this->x = isset($json->x) ? $json->x : 0;
+            $this->y = isset($json->y) ? $json->y : 0;
+            $this->w = isset($json->w) ? $json->w : 200;
+            $this->h = isset($json->h) ? $json->h : 100;
+            $this->templatepath = isset($json->templatepath) ? $json->templatepath : '';
+            $this->radius = isset($json->radius) ? $json->radius : 20;
+            $this->fontsize = isset($json->fontsize) ? $json->fontsize : 12;
+            $this->guid = isset($json->guid) ? $json->guid : '';
 
-            for ($i=0; $i < sizeof($json->inputs); $i++) { 
-                $wv = new WebVar;
-                $wv->parent = $this;
-                $wv->FromJSON($json->inputs[$i]);
-                array_push($this->inputs,$wv);
+            if(isset($json->inputs) && is_array($json->inputs)) {
+                for ($i=0; $i < sizeof($json->inputs); $i++) { 
+                    $wv = new WebVar;
+                    $wv->parent = $this;
+                    $wv->FromJSON($json->inputs[$i]);
+                    array_push($this->inputs,$wv);
+                }
             }
 
-            for ($i=0; $i < sizeof($json->outputs); $i++) { 
-                $wv = new WebVar;
-                $wv->parent = $this;
-                $wv->FromJSON($json->outputs[$i]);
-                array_push($this->outputs,$wv);
+            if(isset($json->outputs) && is_array($json->outputs)) {
+                for ($i=0; $i < sizeof($json->outputs); $i++) { 
+                    $wv = new WebVar;
+                    $wv->parent = $this;
+                    $wv->FromJSON($json->outputs[$i]);
+                    array_push($this->outputs,$wv);
+                }
             }
 
 
@@ -420,12 +521,20 @@
         function Reattach()
         {
             //attach all webvars connections
-            for ($i=0; $i < sizeof($this->inputs); $i++) { 
-                $this->inputs[$i]->AttachConnections();
+            if(isset($this->inputs) && is_array($this->inputs)) {
+                for ($i=0; $i < sizeof($this->inputs); $i++) { 
+                    if(isset($this->inputs[$i])) {
+                        $this->inputs[$i]->AttachConnections();
+                    }
+                }
             }
 
-            for ($i=0; $i < sizeof($this->outputs); $i++) { 
-                $this->outputs[$i]->AttachConnections();
+            if(isset($this->outputs) && is_array($this->outputs)) {
+                for ($i=0; $i < sizeof($this->outputs); $i++) { 
+                    if(isset($this->outputs[$i])) {
+                        $this->outputs[$i]->AttachConnections();
+                    }
+                }
             }
         }
 
@@ -441,6 +550,8 @@
         public $Variabes=[];
         public $Entrynode;
         public $guid;
+        public $compiledNodes = []; // Track which nodes have been compiled
+        public $finalOutputNode = null; // The final output node (like document.write)
 
 
         function Compile($launchFile,$launch)
@@ -511,6 +622,127 @@
 
         }
 
+        // New improved compilation system
+        function CompileReverse($launchFile, $launch)
+        {
+            $webdat = new WebData;
+            $this->compiledNodes = []; // Reset compiled nodes tracking
+            
+            // Find the final output node (document.write or similar)
+            $this->FindFinalOutputNode();
+            
+            if ($this->finalOutputNode == null) {
+                $webdat->status = 'alert-warning';
+                $webdat->message = 'No final output node found! Add a document.write node.';
+                header('Content-Type: application/json');
+                echo json_encode($webdat);
+                return;
+            }
+            
+            // Compile starting from the final node, working backwards
+            $result = $this->CompileNodeWithDependencies($this->finalOutputNode);
+            
+            if ($result === false) {
+                $webdat->status = 'alert-danger';
+                $webdat->message = 'Compilation failed due to dependency issues.';
+                header('Content-Type: application/json');
+                echo json_encode($webdat);
+                return;
+            }
+            
+            // Get the final output from the final node's compilation
+            $finalOutput = $this->finalOutputNode->Compile();
+            
+            if ($launch == TRUE) {
+                $filename = $launchFile.'_'.$_SESSION['username'].'_'.md5(rand().time()).'_Launch.html';
+                $myfile = fopen("Launch/".$filename, "w");  
+                fwrite($myfile, $finalOutput);
+                fclose($myfile);
+                echo $filename;
+            } else {
+                if (empty($finalOutput)) {
+                    $webdat->status = 'alert-success';
+                    $webdat->message = 'Compiled Successfully!';
+                } else {
+                    $webdat->status = 'alert-info';
+                    $webdat->message = 'Compiled Successfully! Output: ' . substr($finalOutput, 0, 100) . (strlen($finalOutput) > 100 ? '...' : '');
+                }
+                header('Content-Type: application/json');
+                echo json_encode($webdat);
+            }
+        }
+        
+        // Find the final output node (document.write or similar)
+        function FindFinalOutputNode()
+        {
+            foreach ($this->Nodes as $node) {
+                if ($node->name == "Write HTML Document" || 
+                    strpos($node->name, "write") !== false ||
+                    strpos($node->name, "output") !== false) {
+                    $this->finalOutputNode = $node;
+                    return;
+                }
+            }
+            
+            // If no specific output node found, use the last node with no outputs
+            foreach ($this->Nodes as $node) {
+                if (isset($node->outputs) && sizeof($node->outputs) == 0) {
+                    $this->finalOutputNode = $node;
+                    return;
+                }
+            }
+            
+            // If still no final node found, use the first node as fallback
+            if (sizeof($this->Nodes) > 0) {
+                $this->finalOutputNode = $this->Nodes[0];
+            }
+        }
+        
+        // Compile a node and all its dependencies recursively
+        function CompileNodeWithDependencies($node)
+        {
+            try {
+                // Check if already compiled to avoid cycles
+                if (in_array($node->guid, $this->compiledNodes)) {
+                    return true;
+                }
+                
+                error_log("Compiling node: " . $node->name . " (GUID: " . $node->guid . ")");
+                
+                // Compile all input dependencies first
+                foreach ($node->inputs as $input) {
+                    if ($input->t != 4) { // Skip flow pins
+                        if (isset($input->connections) && is_array($input->connections)) {
+                            foreach ($input->connections as $connection) {
+                                if (isset($connection->B) && isset($connection->B->parent)) {
+                                    $sourceNode = $connection->B->parent;
+                                    if (!$this->CompileNodeWithDependencies($sourceNode)) {
+                                        error_log("Failed to compile dependency: " . $sourceNode->name);
+                                        return false;
+                                    }
+                                    $input->currentval = $connection->B->currentval;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Now compile this node
+                $result = $node->Compile();
+                error_log("Node " . $node->name . " compiled successfully. Output length: " . strlen($result));
+                
+                // Mark as compiled
+                $this->compiledNodes[] = $node->guid;
+                
+                return true;
+            } catch (Exception $e) {
+                error_log("Error compiling node " . $node->name . ": " . $e->getMessage());
+                return false;
+            } catch (Error $e) {
+                error_log("Fatal error compiling node " . $node->name . ": " . $e->getMessage());
+                return false;
+            }
+        }
 
 
         function FindWebVar($guid)
@@ -527,38 +759,45 @@
 
         function FromJSON($json)
         {
-            $this->name = $json->name;
-            $this->guid = $json->guid;
+            $this->name = isset($json->name) ? $json->name : '';
+            $this->guid = isset($json->guid) ? $json->guid : '';
 
-            for ($i=0; $i < sizeof($json->Nodes); $i++) { 
-                # code...
-                $wn = new WebNode;
-                $wn->parent = $this;
-                $wn->FromJSON($json->Nodes[$i]);
-                if($json->Entrynode->guid==$wn->guid)
-                {
-                    $this->Entrynode = $wn;
+            if(isset($json->Nodes)) {
+                for ($i=0; $i < sizeof($json->Nodes); $i++) { 
+                    # code...
+                    $wn = new WebNode;
+                    $wn->parent = $this;
+                    $wn->FromJSON($json->Nodes[$i]);
+                    if(isset($json->Entrynode) && $json->Entrynode->guid==$wn->guid)
+                    {
+                        $this->Entrynode = $wn;
+                    }
+                    array_push($this->Nodes,$wn);
                 }
-                array_push($this->Nodes,$wn);
             }
 
-            for ($i=0; $i < sizeof($json->Variabes); $i++) { 
-                $wv = new WebVar;
-                //$wv->parent = $this;
-                $wv->FromJSON($json->Variabes[$i]);
-                array_push($this->Variabes,$wv);
+            if(isset($json->Variabes)) {
+                for ($i=0; $i < sizeof($json->Variabes); $i++) { 
+                    $wv = new WebVar;
+                    //$wv->parent = $this;
+                    $wv->FromJSON($json->Variabes[$i]);
+                    array_push($this->Variabes,$wv);
+                }
             }
 
-            for ($i=0; $i < sizeof($json->Functions); $i++) { 
-                # code...
-                $wf = new WebNodeFunction;
-                $wf->FromJSON($json->Functions[$i]);
-                array_push($this->Functions,$wf);
+            if(isset($json->Functions)) {
+                for ($i=0; $i < sizeof($json->Functions); $i++) { 
+                    # code...
+                    $wf = new WebNodeFunction;
+                    $wf->FromJSON($json->Functions[$i]);
+                    array_push($this->Functions,$wf);
+                }
             }
 
-            
-            for ($i=0; $i < sizeof($this->Nodes); $i++) { 
-                $this->Nodes[$i]->Reattach();
+            if(isset($this->Nodes)) {
+                for ($i=0; $i < sizeof($this->Nodes); $i++) { 
+                    $this->Nodes[$i]->Reattach();
+                }
             }
         }
     }
