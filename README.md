@@ -1,2 +1,0 @@
-# SpielSpot
-social media site

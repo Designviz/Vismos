@@ -356,6 +356,13 @@ class WebNode {
         for (let index = 0; index < pin.connections.length; index++) 
         {
             var con = pin.connections[index];
+            
+            // Safety check to ensure con.B and con.B.parent exist
+            if (!con || !con.B || !con.B.parent) {
+                console.log('Warning: Invalid connection object or missing pin/parent:', con);
+                continue;
+            }
+            
             WebNodeUI.context.strokeStyle = colortype(pin.t); 
             WebNodeUI.DrawConnection(this.x+pin.x+WebNodeUI.ScrollX,this.y+pin.y+WebNodeUI.ScrollY,this.x+pin.x+control+WebNodeUI.ScrollX,this.y+pin.y+WebNodeUI.ScrollY,(((this.x+pin.x)+(con.B.parent.x+con.B.x))/2)+WebNodeUI.ScrollX,(((con.B.parent.y+con.B.y)+(this.y+pin.y))/2)+WebNodeUI.ScrollY);
         }
@@ -555,17 +562,82 @@ class WebNodeDocument
         });
     }
 
-    AddWebNodeAssign(path,element)
+    AddWebNodeAssign(path,element,callback)
     {
-
-        $.get("https://vizmos.io/editorfunctions.php?action=load-node&path="+path, function(data, status){
-        console.log(data);
+        console.log('Loading node template from path:', path);
+        
+        // Handle nodes with invalid template paths
+        var correctedPath = path;
+        if (path === "..") {
+            // Try to determine the correct path based on the node name
+            if (element.name && element.name.toLowerCase().includes('body')) {
+                correctedPath = "Nodes/HTML/document.body";
+            } else if (element.name && element.name.toLowerCase().includes('entry')) {
+                correctedPath = "Nodes/HTML/function.entry";
+            } else if (element.name && element.name.toLowerCase().includes('const')) {
+                correctedPath = "Nodes/HTML/const.exp.string";
+            } else if (element.name && element.name.toLowerCase().includes('add') && element.name.toLowerCase().includes('string')) {
+                correctedPath = "Nodes/HTML/add.string";
+            } else if (element.name && element.name.toLowerCase().includes('add') && element.name.toLowerCase().includes('canvas')) {
+                correctedPath = "Nodes/HTML/add.canvas";
+            } else if (element.name && element.name.toLowerCase().includes('add') && element.name.toLowerCase().includes('js')) {
+                correctedPath = "Nodes/HTML/add.js.tag";
+            } else if (element.name && element.name.toLowerCase().includes('print')) {
+                correctedPath = "Nodes/HTML/print.helloworld";
+            } else if (element.name && element.name.toLowerCase().includes('write')) {
+                correctedPath = "Nodes/HTML/document.write";
+            } else if (element.name && element.name.toLowerCase().includes('header')) {
+                correctedPath = "Nodes/HTML/document.header";
+            } else if (element.name && element.name.toLowerCase().includes('begin')) {
+                correctedPath = "Nodes/HTML/document.begin";
+            } else {
+                console.error('Could not determine correct template path for node:', element.name);
+                if (callback && typeof callback === 'function') {
+                    callback();
+                }
+                return;
+            }
+            console.log('Corrected template path from ".." to:', correctedPath);
+        }
+        
+        $.get("https://vizmos.io/editorfunctions.php?action=load-node&path="+correctedPath, function(data, status){
+        console.log('Template data received:', data);
+        
+        // Check if data is valid
+        if (!data) {
+            console.error('Error: No template data received for path:', correctedPath);
+            if (callback && typeof callback === 'function') {
+                callback();
+            }
+            return;
+        }
+        
+        // If data is a string (error message), check if it's empty
+        if (typeof data === 'string' && data.trim() === '') {
+            console.error('Error: Empty template data for path:', correctedPath);
+            if (callback && typeof callback === 'function') {
+                callback();
+            }
+            return;
+        }
+        
+        // If data is a string that contains an error message, handle it
+        if (typeof data === 'string' && data.includes('Unable to open file')) {
+            console.error('Error: Template file not found for path:', correctedPath);
+            if (callback && typeof callback === 'function') {
+                callback();
+            }
+            return;
+        }
+        
         var node = new WebNode(WebNodeUI.context,"",element.x,element.y,200,200,0);
         var newnode = Object.assign(node, data);
         newnode.x = element.x;
-        newnode.x = element.y;
+        newnode.y = element.y;
         newnode.guid = element.guid;
-        newnode.Reload();
+        console.log('Created node at position:', newnode.x, newnode.y);
+        
+        // Set entry node flag before reloading
         if(element.bentry)
         {
             newnode.bentry = true;
@@ -573,79 +645,181 @@ class WebNodeDocument
         } else {
             newnode.bentry = false;
         }
-        //copy guids from original
         
-
-        var index = 0;
-        for (index = 0; index < newnode.inputs.length; index++) {
-            newnode.inputs[index].guid = element.inputs[index].guid;
+        // Store original GUIDs before reloading
+        var originalInputGuids = [];
+        var originalOutputGuids = [];
+        
+        for (var index = 0; index < element.inputs.length; index++) {
+            originalInputGuids[index] = element.inputs[index].guid;
         } 
-        for (index = 0; index < newnode.outputs.length; index++) {
-            newnode.outputs[index].guid = element.outputs[index].guid;
+        for (var index = 0; index < element.outputs.length; index++) {
+            originalOutputGuids[index] = element.outputs[index].guid;
+        }
+        
+        // Reload the node (this will create new pins with new GUIDs)
+        newnode.Reload();
+        
+        // Restore original GUIDs, positions, and connections
+        for (var index = 0; index < newnode.inputs.length && index < originalInputGuids.length; index++) {
+            newnode.inputs[index].guid = originalInputGuids[index];
+            // Restore pin positions from original element
+            if (element.inputs[index]) {
+                newnode.inputs[index].x = element.inputs[index].x;
+                newnode.inputs[index].y = element.inputs[index].y;
+                console.log('Restored input pin', index, 'position:', element.inputs[index].x, element.inputs[index].y);
+                // Don't copy connections here - ReConnectNodes will handle creating proper connection objects
+                newnode.inputs[index].connections = [];
+            }
+        } 
+        for (var index = 0; index < newnode.outputs.length && index < originalOutputGuids.length; index++) {
+            newnode.outputs[index].guid = originalOutputGuids[index];
+            // Restore pin positions from original element
+            if (element.outputs[index]) {
+                newnode.outputs[index].x = element.outputs[index].x;
+                newnode.outputs[index].y = element.outputs[index].y;
+                console.log('Restored output pin', index, 'position:', element.outputs[index].x, element.outputs[index].y);
+                // Don't copy connections here - ReConnectNodes will handle creating proper connection objects
+                newnode.outputs[index].connections = [];
+            }
         } 
 
         WebNodeUI.CurrentDoc.Nodes.push(newnode);
+        console.log('Node added to document. Total nodes:', WebNodeUI.CurrentDoc.Nodes.length);
 
-        
-        //WebNodeUI.Draw();
-        //alert("Data: " + data + "\nStatus: " + status);
+        // Call callback if provided
+        if (callback && typeof callback === 'function') {
+            callback();
+        }
+        }).fail(function(xhr, status, error) {
+            console.error('AJAX Error loading template:', status, error);
+            console.error('Path:', path);
+            console.error('Response:', xhr.responseText);
+            // Still call callback to continue loading process
+            if (callback && typeof callback === 'function') {
+                callback();
+            }
         });
     }
 
     FindPinByGUID(guid)
     {
         //WebNodeUI.CurrentDoc.Nodes.forEach(function(node)
+        console.log('Looking for GUID: ' + guid);
         console.log('Nodes count: '+WebNodeUI.CurrentDoc.Nodes.length);
         var nindex = 0;
-        for(nindex = 0; nindex < WebNodeUI.CurrentDoc.Nodes.length; index++)
+        for(nindex = 0; nindex < WebNodeUI.CurrentDoc.Nodes.length; nindex++)
         {
+            console.log('Checking node', nindex, 'with', WebNodeUI.CurrentDoc.Nodes[nindex].inputs.length, 'inputs and', WebNodeUI.CurrentDoc.Nodes[nindex].outputs.length, 'outputs');
             
             var index = 0;
             for (index = 0; index < WebNodeUI.CurrentDoc.Nodes[nindex].inputs.length; index++) {
-                console.log('input GUID: '+WebNodeUI.CurrentDoc.Nodes[nindex].inputs[index].guid);
-                if(WebNodeUI.CurrentDoc.Nodes[nindex].inputs[index].guid = guid)
+                var inputPin = WebNodeUI.CurrentDoc.Nodes[nindex].inputs[index];
+                console.log('input GUID: '+inputPin.guid, 'looking for: '+guid);
+                if(inputPin.guid == guid)
                 {
-                    
-                    return WebNodeUI.CurrentDoc.Nodes[nindex].inputs[index];
+                    console.log('Found input pin with GUID:', guid);
+                    return inputPin;
                 }
             } 
             for (index = 0; index < WebNodeUI.CurrentDoc.Nodes[nindex].outputs.length; index++) {
-                console.log('output GUID: '+WebNodeUI.CurrentDoc.Nodes[nindex].outputs[index].guid);
-                if(WebNodeUI.CurrentDoc.Nodes[nindex].outputs[index].guid = guid)
+                var outputPin = WebNodeUI.CurrentDoc.Nodes[nindex].outputs[index];
+                console.log('output GUID: '+outputPin.guid, 'looking for: '+guid);
+                if(outputPin.guid == guid)
                 {
-                    
-                    return WebNodeUI.CurrentDoc.Nodes[nindex].inputs[index];
+                    console.log('Found output pin with GUID:', guid);
+                    return outputPin;
                 }
             } 
         }
+        console.log('GUID not found:', guid);
         return null;
     }
 
     ReConnectNodes(element)
     {
-        
-        var i = 0;
+        console.log('Reconnecting nodes...');
         element.Nodes.forEach(function(node)
         {
-            var p = 0;
-            node.inputs.forEach(function(pin)
+            console.log('Processing node with GUID:', node.guid, 'with', node.inputs.length, 'inputs and', node.outputs.length, 'outputs');
+            
+            // Find the actual node object by GUID
+            var actualNode = null;
+            for (var i = 0; i < WebNodeUI.CurrentDoc.Nodes.length; i++) {
+                if (WebNodeUI.CurrentDoc.Nodes[i].guid === node.guid) {
+                    actualNode = WebNodeUI.CurrentDoc.Nodes[i];
+                    break;
+                }
+            }
+            
+            if (!actualNode) {
+                console.log('Warning: Could not find node with GUID:', node.guid);
+                return;
+            }
+            
+            console.log('Found actual node:', actualNode.name);
+            
+            // Process input pins
+            node.inputs.forEach(function(pin, pinIndex)
             {
-                pin.connections.forEach(function(con)
-                {
-                    var opin = WebNodeUI.CurrentDoc.FindPinByGUID(con.B);
-                    console.log('Find GUID: '+con.B);
-                    if(opin!=null)
+                if (pin.connections && pin.connections.length > 0) {
+                    console.log('Input pin', pinIndex, 'has', pin.connections.length, 'connections');
+                    pin.connections.forEach(function(con)
                     {
+                        console.log('Processing input connection:', con);
+                        console.log('Connection A GUID:', con.A, 'B GUID:', con.B);
+                        var opin = WebNodeUI.CurrentDoc.FindPinByGUID(con.B);
+                        console.log('Find GUID: '+con.B);
+                        if(opin!=null)
+                        {
+                            console.log('Connecting input pin: ' + con.B);
+                            // Create connection object with actual pin objects
+                            var connection = new WebPinConnection(con.t, actualNode.inputs[pinIndex], opin);
+                            connection.guid = con.guid;
+                            
+                            // Add to both pins
+                            actualNode.inputs[pinIndex].connections.push(connection);
+                            opin.connections.push(connection);
+                            console.log('Connection created between input pin and output pin');
+                        } else {
+                            console.log('Pin not found: ' + con.B);
+                        }
                         
-                        WebNodeUI.CurrentDoc.Nodes[i].inputs[p].AddConnection(opin);
-                        opin.AddConnection(WebNodeUI.CurrentDoc.Nodes[i].inputs[p]);
-                    }
-                    
-                });
-                p++;
-            });        
-            i++;
+                    });
+                }
+            });
+            
+            // Process output pins
+            node.outputs.forEach(function(pin, pinIndex)
+            {
+                if (pin.connections && pin.connections.length > 0) {
+                    console.log('Output pin', pinIndex, 'has', pin.connections.length, 'connections');
+                    pin.connections.forEach(function(con)
+                    {
+                        console.log('Processing output connection:', con);
+                        console.log('Connection A GUID:', con.A, 'B GUID:', con.B);
+                        var opin = WebNodeUI.CurrentDoc.FindPinByGUID(con.B);
+                        console.log('Find GUID: '+con.B);
+                        if(opin!=null)
+                        {
+                            console.log('Connecting output pin: ' + con.B);
+                            // Create connection object with actual pin objects
+                            var connection = new WebPinConnection(con.t, actualNode.outputs[pinIndex], opin);
+                            connection.guid = con.guid;
+                            
+                            // Add to both pins
+                            actualNode.outputs[pinIndex].connections.push(connection);
+                            opin.connections.push(connection);
+                            console.log('Connection created between output pin and input pin');
+                        } else {
+                            console.log('Pin not found: ' + con.B);
+                        }
+                        
+                    });
+                }
+            });
         });
+        console.log('Reconnection complete');
 
     }
 }
@@ -1648,28 +1822,50 @@ function LoadMyDocument()
     //WebNodeUI.MainDoc.name = $('#savedocModal').find('.modal-body input').val();
     $.post("editorfunctions.php",{"postaction" : "load-document", "id" : Editorparams.id},function(data){
         
-        var tempData = JSON.parse(data);
-        WebNodeUI.MainDoc = new WebNodeDocument(canvas,ctx,tempData.name);
-        WebNodeUI.CurrentDoc = WebNodeUI.MainDoc;
-        alert('Loaded: '+tempData.name);
+        try {
+            var tempData = JSON.parse(data);
+            WebNodeUI.MainDoc = new WebNodeDocument(canvas,ctx,tempData.name);
+            WebNodeUI.CurrentDoc = WebNodeUI.MainDoc;
+            console.log('Loaded: '+tempData.name);
+            console.log('Nodes to load:', tempData.Nodes.length);
 
-        
-        tempData.Nodes.forEach(function(element) {
-            WebNodeUI.CurrentDoc.Nodes
-            WebNodeUI.CurrentDoc.AddWebNodeAssign(element.templatepath.replace('.php',''),element);
-        });
+            // Track how many nodes we expect to load
+            var nodesToLoad = tempData.Nodes.length;
+            var nodesLoaded = 0;
+            
+            if (nodesToLoad === 0) {
+                // No nodes to load, just draw
+                console.log('No nodes to load, drawing empty canvas');
+                WebNodeUI.Draw();
+                return;
+            }
 
-        /*
-        jdata.Functions.forEach(function(element)
-        {
-            WebNodeUI.CurrentDoc.Nodes
-            WebNodeUI.MainDoc.AddWebNodeAssign(element.templatepath.replace('.php',''),element);
-        });
-        */
-        WebNodeUI.CurrentDoc.ReConnectNodes(tempData);
+            tempData.Nodes.forEach(function(element, index) {
+                console.log('Loading node', index, 'at position:', element.x, element.y);
+                console.log('Node template path:', element.templatepath);
+                WebNodeUI.CurrentDoc.AddWebNodeAssign(element.templatepath.replace('.php',''),element, function() {
+                    nodesLoaded++;
+                    console.log('Node loaded:', nodesLoaded, 'of', nodesToLoad);
+                    console.log('Current nodes in document:', WebNodeUI.CurrentDoc.Nodes.length);
+                    if (nodesLoaded === nodesToLoad) {
+                        // All nodes loaded, now reconnect
+                        console.log('All nodes loaded, reconnecting...');
+                        console.log('Total nodes to reconnect:', tempData.Nodes.length);
+                        WebNodeUI.CurrentDoc.ReConnectNodes(tempData);
+                        console.log('Reconnection complete, drawing...');
+                        WebNodeUI.Draw();
+                    }
+                });
+            });
 
-        //Object.assign(WebNodeUI.MainDoc, jdata);
+        } catch (error) {
+            console.error('Error loading document:', error);
+            alert('Error loading document: ' + error.message);
+        }
 
+    }).fail(function(xhr, status, error) {
+        console.error('AJAX Error loading document:', error);
+        alert('Error loading document: ' + error);
     });
 }
 

@@ -11,7 +11,7 @@ class PROJECTCARDS
         $carddata = $carddata . '           <h5 class="card-title">'.$postdata[1].'</h5>';
         $carddata = $carddata . '           <p class="card-text">'.$postdata[5].'</p>';
         $carddata = $carddata . '           <span class="align-bottom"><a href="editor.php?action=EDIT&id='.$postdata[0].'" class="btn btn-block btn-primary"><i class="bi bi-folder"></i> Open</a></span>';
-        $carddata = $carddata . '           <span class="align-bottom"><a href="#" class="btn btn-block btn-danger"><i class="bi bi-trash"></i> Delete</a></span>';       
+        $carddata = $carddata . '           <span class="align-bottom"><button type="button" class="btn btn-block btn-danger delete-project-btn" data-project-id="'.$postdata[0].'" data-project-name="'.$postdata[1].'" data-toggle="modal" data-target="#deleteProjectModal"><i class="bi bi-trash"></i> Delete</button></span>';       
         $carddata = $carddata . '       </div>';
         $carddata = $carddata . '   </div>';
         $carddata = $carddata . '</div>';

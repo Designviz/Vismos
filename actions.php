@@ -51,6 +51,29 @@ if(!empty($action))
             }
             break;
 
+        case "delete_project":
+            if(!empty($_SESSION['id']))
+            {
+                if(empty($_POST['project_id']))
+                {
+                    echo json_encode(['success' => false, 'message' => 'Project ID is required']);
+                    break;
+                }
+                
+                $projectid = $_POST['project_id'];
+                $userid = $_SESSION['id'];
+                
+                if($database->DeleteProject($projectid, $userid))
+                {
+                    echo json_encode(['success' => true, 'message' => 'Project deleted successfully']);
+                } else {
+                    echo json_encode(['success' => false, 'message' => $database->get_error()]);
+                }
+            } else {
+                echo json_encode(['success' => false, 'message' => 'You must be logged in to delete projects']);
+            }
+            break;
+
         default:
 
             break;

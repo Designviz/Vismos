@@ -378,6 +378,40 @@ class DB
           return NULL;
         }       
     }
+
+    function DeleteProject($projectid, $userid)
+    {
+        // Sanitize inputs
+        $projectid = mysqli_real_escape_string($this->$conn, $projectid);
+        $userid = mysqli_real_escape_string($this->$conn, $userid);
+        
+        // First verify the project belongs to the user
+        $sql = "SELECT * FROM Projects WHERE id = '$projectid' AND ownerid = '$userid'";
+        $sqlQuery = mysqli_query($this->$conn, $sql);
+        
+        if (!$sqlQuery) {
+            $this->errormess = "Database error: " . mysqli_error($this->$conn);
+            return FALSE;
+        }
+        
+        $countRow = mysqli_num_rows($sqlQuery);
+        
+        if ($countRow == 1) {
+            // Delete the project
+            $deleteSql = "DELETE FROM Projects WHERE id = '$projectid' AND ownerid = '$userid'";
+            $deleteQuery = mysqli_query($this->$conn, $deleteSql);
+            
+            if ($deleteQuery) {
+                return TRUE;
+            } else {
+                $this->errormess = "Could not delete project: " . mysqli_error($this->$conn);
+                return FALSE;
+            }
+        } else {
+            $this->errormess = "Project not found or you don't have permission to delete it";
+            return FALSE;
+        }
+    }
 }
 
 ?>
